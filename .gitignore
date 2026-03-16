@@ -1,0 +1,43 @@
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyd
+*.so
+*.egg-info/
+*.egg
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# IDE / OS
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Build / packaging
+build/
+dist/
+
+# Logs
+*.log
+
+# Generated outputs
+output/
+transkrip/
+*.pdf
+
+# Data files (usually large/sensitive)
+*.xlsx
+*.xls
+*.csv
+
+# Images generated/temporary
+*.tmp
+*.temp
