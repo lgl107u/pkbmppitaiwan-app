@@ -38,7 +38,7 @@ def get_resource_path(relative_path):
 # CONSTANTS
 # =============================================================================
 APP_TITLE = "PKBM PPI Taiwan - Generator App"
-APP_VERSION = "2.3"
+APP_VERSION = "2.4"
 
 # Responsive window sizing
 def get_window_dimensions():
@@ -102,26 +102,29 @@ GENERATORS = {
     },
     "kartu_upk": {
         "name": "Kartu UPK",
-        "description": "Generate Kartu Peserta UPK (Belum tersedia)",
+        "description": "Generate Kartu Peserta UPK Paket C (85.60x53.98mm)",
         "color": COLOR_WARNING,
         "hover": COLOR_WARNING_HOVER,
         "files_needed": [
             {"key": "excel_kartu", "label": "File Data Kartu UPK (.xlsx)", "required": True},
+            {"key": "foto_folder_upk", "label": "Folder Foto Siswa (opsional)", "required": False, "file_type": "folder"},
         ],
+        "has_tahun_ajaran": True,
         "output_folder": "./output/kartu_upk",
-        "template_files": [],
-        "disabled": True
+        "template_files": ["data/kartu_upk/template_kartu_upk.xlsx"]
     },
     "kartu_siswa": {
-        "name": "Kartu Siswa",
-        "description": "Generate Kartu Identitas Siswa",
+        "name": "Kartu Pelajar",
+        "description": "Generate Kartu Pelajar / Identitas Siswa (85.60x53.98mm)",
         "color": "#ec4899",
         "hover": "#db2777",
         "files_needed": [
             {"key": "excel_kartu_siswa", "label": "File Data Kartu Siswa (.xlsx)", "required": True},
+            {"key": "foto_folder_siswa", "label": "Folder Foto Siswa (opsional)", "required": False, "file_type": "folder"},
         ],
+        "has_tahun_ajaran": True,
         "output_folder": "./output/kartu_siswa",
-        "template_files": []
+        "template_files": ["data/kartu_siswa/template_kartu_siswa.xlsx"]
     },
     "transkrip": {
         "name": "Transkrip Nilai",
@@ -242,7 +245,8 @@ class FileSelector(tk.Frame):
         label: str,
         file_types: tuple = (("Excel files", "*.xlsx *.xls"), ("All files", "*.*")),
         on_file_selected: Optional[Callable] = None,
-        is_image: bool = False
+        is_image: bool = False,
+        is_folder: bool = False
     ):
         if is_image:
             file_types = (("Image files", "*.png *.jpg *.jpeg *.gif *.bmp"), ("All files", "*.*"))
@@ -251,6 +255,7 @@ class FileSelector(tk.Frame):
         self.file_path = tk.StringVar()
         self.file_types = file_types
         self.on_file_selected = on_file_selected
+        self.is_folder = is_folder
         
         # Label
         self.lbl = tk.Label(
@@ -301,14 +306,21 @@ class FileSelector(tk.Frame):
         self.browse_btn.bind("<Leave>", lambda e: self.browse_btn.config(bg=COLOR_PRIMARY))
     
     def _browse(self):
-        file_path = filedialog.askopenfilename(
-            title="Pilih File Excel",
-            filetypes=self.file_types
-        )
-        if file_path:
-            self.file_path.set(file_path)
-            if self.on_file_selected:
-                self.on_file_selected(file_path)
+        if self.is_folder:
+            folder_path = filedialog.askdirectory(title="Pilih Folder Foto Siswa")
+            if folder_path:
+                self.file_path.set(folder_path)
+                if self.on_file_selected:
+                    self.on_file_selected(folder_path)
+        else:
+            file_path = filedialog.askopenfilename(
+                title="Pilih File",
+                filetypes=self.file_types
+            )
+            if file_path:
+                self.file_path.set(file_path)
+                if self.on_file_selected:
+                    self.on_file_selected(file_path)
     
     def get_path(self) -> str:
         return self.file_path.get()
@@ -823,11 +835,13 @@ class PKBMGeneratorApp:
         # Required files - full width
         for file_config in required_files:
             is_image = file_config.get("file_type") == "image"
+            is_folder = file_config.get("file_type") == "folder"
             selector = FileSelector(
                 self.file_inputs_container,
                 label=file_config["label"] + " *",
                 on_file_selected=self._on_file_selected,
-                is_image=is_image
+                is_image=is_image,
+                is_folder=is_folder
             )
             selector.pack(fill=tk.X, pady=(0, 2))
             self.file_selectors[file_config["key"]] = selector
@@ -844,11 +858,13 @@ class PKBMGeneratorApp:
                 opt_frame.columnconfigure(0, weight=1)
                 file_config = optional_files[0]
                 is_image = file_config.get("file_type") == "image"
+                is_folder = file_config.get("file_type") == "folder"
                 selector = FileSelector(
                     opt_frame,
                     label=file_config["label"],
                     on_file_selected=self._on_file_selected,
-                    is_image=is_image
+                    is_image=is_image,
+                    is_folder=is_folder
                 )
                 selector.grid(row=0, column=0, sticky="ew", pady=(0, 2))
                 self.file_selectors[file_config["key"]] = selector
@@ -859,11 +875,13 @@ class PKBMGeneratorApp:
                 opt_frame.columnconfigure(1, weight=1)
                 for idx, file_config in enumerate(optional_files):
                     is_image = file_config.get("file_type") == "image"
+                    is_folder = file_config.get("file_type") == "folder"
                     selector = FileSelector(
                         opt_frame,
                         label=file_config["label"],
                         on_file_selected=self._on_file_selected,
-                        is_image=is_image
+                        is_image=is_image,
+                        is_folder=is_folder
                     )
                     selector.grid(row=0, column=idx, sticky="ew", padx=(0 if idx == 0 else 5, 0), pady=(0, 2))
                     self.file_selectors[file_config["key"]] = selector
@@ -876,11 +894,13 @@ class PKBMGeneratorApp:
                 # First file - full width
                 file_config = optional_files[0]
                 is_image = file_config.get("file_type") == "image"
+                is_folder = file_config.get("file_type") == "folder"
                 selector = FileSelector(
                     opt_frame,
                     label=file_config["label"],
                     on_file_selected=self._on_file_selected,
-                    is_image=is_image
+                    is_image=is_image,
+                    is_folder=is_folder
                 )
                 selector.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 2))
                 self.file_selectors[file_config["key"]] = selector
@@ -888,11 +908,13 @@ class PKBMGeneratorApp:
                 # Remaining 2 files - second row
                 for idx, file_config in enumerate(optional_files[1:]):
                     is_image = file_config.get("file_type") == "image"
+                    is_folder = file_config.get("file_type") == "folder"
                     selector = FileSelector(
                         opt_frame,
                         label=file_config["label"],
                         on_file_selected=self._on_file_selected,
-                        is_image=is_image
+                        is_image=is_image,
+                        is_folder=is_folder
                     )
                     selector.grid(row=1, column=idx, sticky="ew", padx=(0 if idx == 0 else 5, 0), pady=(0, 2))
                     self.file_selectors[file_config["key"]] = selector
@@ -903,11 +925,13 @@ class PKBMGeneratorApp:
                 opt_frame.columnconfigure(1, weight=1)
                 for idx, file_config in enumerate(optional_files):
                     is_image = file_config.get("file_type") == "image"
+                    is_folder = file_config.get("file_type") == "folder"
                     selector = FileSelector(
                         opt_frame,
                         label=file_config["label"],
                         on_file_selected=self._on_file_selected,
-                        is_image=is_image
+                        is_image=is_image,
+                        is_folder=is_folder
                     )
                     row = idx // 2
                     col = idx % 2
@@ -920,11 +944,13 @@ class PKBMGeneratorApp:
                 opt_frame.columnconfigure(1, weight=1)
                 for idx, file_config in enumerate(optional_files):
                     is_image = file_config.get("file_type") == "image"
+                    is_folder = file_config.get("file_type") == "folder"
                     selector = FileSelector(
                         opt_frame,
                         label=file_config["label"],
                         on_file_selected=self._on_file_selected,
-                        is_image=is_image
+                        is_image=is_image,
+                        is_folder=is_folder
                     )
                     row = idx // 2
                     col = idx % 2
@@ -976,12 +1002,239 @@ class PKBMGeneratorApp:
             self.wali_status_label.pack(fill=tk.X, pady=(4, 0))
             self._update_wali_status_label()
         
+        # Tahun Ajaran will be loaded from Excel DataTetap automatically
+        self.tahun_ajaran_var = None
+        
+        # Add Kepsek signature management for kartu generators (like rapot)
+        if self.selected_generator in ["kartu_upk", "kartu_siswa"]:
+            kepsek_frame = tk.Frame(self.file_inputs_container, bg=COLOR_CARD)
+            kepsek_frame.pack(fill=tk.X, pady=(8, 0))
+            
+            kepsek_label = tk.Label(
+                kepsek_frame,
+                text="Tanda Tangan Kepala PKBM",
+                font=("Segoe UI", 9, "bold"),
+                bg=COLOR_CARD,
+                fg=COLOR_TEXT,
+                anchor="w"
+            )
+            kepsek_label.pack(fill=tk.X, pady=(0, 4))
+            
+            self.kepsek_btn = tk.Button(
+                kepsek_frame,
+                text="📝 Kelola TTD Kepala PKBM...",
+                font=("Segoe UI", 9),
+                bg="#8b5cf6",
+                fg="white",
+                relief="flat",
+                cursor="hand2",
+                padx=12,
+                pady=6,
+                command=self._open_kepsek_signature_manager
+            )
+            self.kepsek_btn.pack(fill=tk.X)
+            self.kepsek_btn.bind("<Enter>", lambda e: self.kepsek_btn.config(bg="#7c3aed"))
+            self.kepsek_btn.bind("<Leave>", lambda e: self.kepsek_btn.config(bg="#8b5cf6"))
+            
+            # Status label for kepsek signature
+            self.kepsek_status_label = tk.Label(
+                kepsek_frame,
+                text="Belum ada TTD Kepala PKBM (klik tombol di atas untuk menambahkan)",
+                font=("Segoe UI", 8),
+                bg=COLOR_CARD,
+                fg=COLOR_TEXT_SECONDARY,
+                anchor="w"
+            )
+            self.kepsek_status_label.pack(fill=tk.X, pady=(4, 0))
+            self._update_kepsek_status_label()
+        
         # Clear output folder (user must select)
         self.output_path.set("")
         
         # Clear log and reset progress
         self._clear_log()
         self.progress.pack_forget()
+    
+    def _update_kepsek_status_label(self):
+        """Update the kepsek signature status label."""
+        if not hasattr(self, 'kepsek_status_label'):
+            return
+        
+        ttd_kepsek = self.wali_signatures.get('KEPSEK')
+        if ttd_kepsek:
+            self.kepsek_status_label.config(
+                text=f"✓ TTD Kepala PKBM: {os.path.basename(ttd_kepsek)}",
+                fg=COLOR_SUCCESS
+            )
+        else:
+            self.kepsek_status_label.config(
+                text="Belum ada TTD Kepala PKBM (klik tombol di atas untuk menambahkan)",
+                fg=COLOR_TEXT_SECONDARY
+            )
+    
+    def _open_kepsek_signature_manager(self):
+        """Open popup window to manage Kepsek signature."""
+        # Load kepsek name from Excel first
+        excel_key = None
+        if self.selected_generator == "kartu_upk":
+            excel_key = "excel_kartu"
+        elif self.selected_generator == "kartu_siswa":
+            excel_key = "excel_kartu_siswa"
+        
+        kepsek_name = "Kepala PKBM"
+        if excel_key and excel_key in self.file_selectors:
+            excel_path = self.file_selectors[excel_key].get_path()
+            if excel_path and os.path.exists(excel_path):
+                try:
+                    import pandas as pd
+                    import warnings
+                    warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl")
+                    
+                    df = pd.read_excel(excel_path, sheet_name="DataTetap")
+                    df.columns = df.columns.str.strip()
+                    
+                    # Look for 'Kepsek' in variabel column (first column)
+                    for _, row in df.iterrows():
+                        var_name = str(row.iloc[0]).strip()
+                        if var_name.lower() == 'kepsek':
+                            kepsek_name = str(row.iloc[1]).strip() if len(row) > 1 else "Kepala PKBM"
+                            break
+                except Exception as e:
+                    print(f"Error loading kepsek name: {e}")
+        
+        # Create popup dialog
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Kelola Tanda Tangan Kepala PKBM")
+        dialog.geometry("600x300")
+        dialog.resizable(False, False)
+        dialog.transient(self.root)
+        dialog.grab_set()
+        
+        # Center dialog
+        dialog.update_idletasks()
+        x = self.root.winfo_x() + (self.root.winfo_width() - 600) // 2
+        y = self.root.winfo_y() + (self.root.winfo_height() - 300) // 2
+        dialog.geometry(f"+{x}+{y}")
+        
+        # Title
+        tk.Label(
+            dialog,
+            text="Tanda Tangan Kepala PKBM",
+            font=("Segoe UI", 14, "bold")
+        ).pack(pady=(15, 5))
+        
+        tk.Label(
+            dialog,
+            text="Pilih file gambar tanda tangan untuk Kepala PKBM",
+            font=("Segoe UI", 9),
+            fg=COLOR_TEXT_SECONDARY
+        ).pack(pady=(0, 15))
+        
+        # Kepsek row
+        row_frame = tk.Frame(dialog, bg="white", relief="groove", bd=1)
+        row_frame.pack(fill=tk.X, pady=10, padx=20)
+        
+        tk.Label(
+            row_frame,
+            text="Kepala PKBM",
+            font=("Segoe UI", 10, "bold"),
+            bg="white",
+            width=14,
+            anchor="w"
+        ).pack(side=tk.LEFT, padx=(10, 5), pady=8)
+        
+        tk.Label(
+            row_frame,
+            text=kepsek_name,
+            font=("Segoe UI", 9),
+            bg="white",
+            width=22,
+            anchor="w"
+        ).pack(side=tk.LEFT, padx=5, pady=8)
+        
+        path_var = tk.StringVar(value=self.wali_signatures.get('KEPSEK', ""))
+        
+        tk.Entry(
+            row_frame,
+            textvariable=path_var,
+            font=("Segoe UI", 8),
+            state="readonly",
+            readonlybackground="#f1f5f9",
+            width=20
+        ).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5, pady=8)
+        
+        def browse():
+            fp = filedialog.askopenfilename(
+                title="Pilih TTD Kepala PKBM",
+                filetypes=(("Image files", "*.png *.jpg *.jpeg *.gif *.bmp"), ("All files", "*.*"))
+            )
+            if fp:
+                path_var.set(fp)
+        
+        tk.Button(
+            row_frame,
+            text="Browse",
+            font=("Segoe UI", 8),
+            bg=COLOR_PRIMARY,
+            fg="white",
+            relief="flat",
+            padx=8,
+            pady=2,
+            command=browse
+        ).pack(side=tk.LEFT, padx=(5, 4), pady=8)
+        
+        def clear():
+            path_var.set("")
+        
+        tk.Button(
+            row_frame,
+            text="×",
+            font=("Segoe UI", 10, "bold"),
+            bg="#dc2626",
+            fg="white",
+            relief="flat",
+            width=2,
+            command=clear
+        ).pack(side=tk.LEFT, padx=(0, 10), pady=8)
+        
+        # Buttons frame
+        btn_frame = tk.Frame(dialog)
+        btn_frame.pack(pady=15)
+        
+        def save_and_close():
+            path = path_var.get()
+            if path:
+                self.wali_signatures['KEPSEK'] = path
+            elif 'KEPSEK' in self.wali_signatures:
+                del self.wali_signatures['KEPSEK']
+            
+            self._update_kepsek_status_label()
+            self._log(f"TTD Kepala PKBM diperbarui", "success")
+            dialog.destroy()
+        
+        tk.Button(
+            btn_frame,
+            text="💾 Simpan",
+            font=("Segoe UI", 10),
+            bg=COLOR_SUCCESS,
+            fg="white",
+            padx=20,
+            pady=5,
+            relief="flat",
+            command=save_and_close
+        ).pack(side=tk.LEFT, padx=5)
+        
+        tk.Button(
+            btn_frame,
+            text="❌ Batal",
+            font=("Segoe UI", 10),
+            bg="#6b7280",
+            fg="white",
+            padx=20,
+            pady=5,
+            relief="flat",
+            command=dialog.destroy
+        ).pack(side=tk.LEFT, padx=5)
     
     def _on_file_selected(self, path: str):
         """Handle file selection."""
@@ -1555,6 +1808,22 @@ class PKBMGeneratorApp:
                         "warning"
                     )
             
+            elif generator_key == "kartu_upk":
+                excel_path = self.file_selectors["excel_kartu"].get_path()
+                df_check = pd.read_excel(excel_path, sheet_name=None)
+                if 'DataSiswa' not in df_check:
+                    loading_dialog.destroy()
+                    return False, "Sheet 'DataSiswa' tidak ditemukan di file Excel.\nPastikan file memiliki sheet DataSiswa dan DataTetap."
+                self._log(f"File Excel valid - {len(df_check.get('DataSiswa', []))} siswa ditemukan", "success")
+            
+            elif generator_key == "kartu_siswa":
+                excel_path = self.file_selectors["excel_kartu_siswa"].get_path()
+                df_check = pd.read_excel(excel_path, sheet_name=None)
+                if 'DataSiswa' not in df_check:
+                    loading_dialog.destroy()
+                    return False, "Sheet 'DataSiswa' tidak ditemukan di file Excel.\nPastikan file memiliki sheet DataSiswa dan DataTetap."
+                self._log(f"File Excel valid - {len(df_check.get('DataSiswa', []))} siswa ditemukan", "success")
+            
             loading_dialog.destroy()
             return True, ""
             
@@ -1640,6 +1909,8 @@ class PKBMGeneratorApp:
                 self._generate_skhupk(output_folder)
             elif generator_key == "kartu_upk":
                 self._generate_kartu_upk(output_folder)
+            elif generator_key == "kartu_siswa":
+                self._generate_kartu_siswa(output_folder)
             elif generator_key == "transkrip":
                 self._generate_transkrip(output_folder)
             
@@ -1779,7 +2050,143 @@ class PKBMGeneratorApp:
     
     def _generate_kartu_upk(self, output_folder: str):
         """Generate Kartu UPK PDFs."""
-        messagebox.showinfo("Info", "Kartu UPK Generator - Implementasi dalam proses")
+        import sys
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from lib.pdf_generators.kartu_upk_generator import generate_all_kartu_upk
+        
+        excel_path = self.file_selectors["excel_kartu"].get_path()
+        self.root.after(0, lambda: self._log(f"File Excel: {os.path.basename(excel_path)}", "info"))
+        
+        # Get optional photo folder
+        photo_folder = None
+        if "foto_folder_upk" in self.file_selectors:
+            path = self.file_selectors["foto_folder_upk"].get_path()
+            if path:
+                photo_folder = path
+                self.root.after(0, lambda p=path: self._log(f"Folder Foto: {p}", "info"))
+        
+        # Load tahun ajaran from Excel DataTetap
+        tahun_ajaran = None
+        try:
+            import pandas as pd
+            import warnings
+            warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl")
+            
+            df = pd.read_excel(excel_path, sheet_name="DataTetap")
+            df.columns = df.columns.str.strip()
+            
+            for _, row in df.iterrows():
+                var_name = str(row.iloc[0]).strip()
+                if var_name.lower() == 'tahun':
+                    tahun_ajaran = str(row.iloc[1]).strip() if len(row) > 1 else None
+                    break
+            
+            if tahun_ajaran:
+                self.root.after(0, lambda t=tahun_ajaran: self._log(f"Tahun Ajaran: {t} (dari Excel)", "info"))
+        except Exception as e:
+            self.root.after(0, lambda: self._log(f"Warning: Tidak dapat load Tahun Ajaran dari Excel", "warning"))
+        
+        # Get kepsek signature (from wali_signatures if available)
+        ttd_kepsek_path = self.wali_signatures.get('KEPSEK') or None
+        if ttd_kepsek_path:
+            self.root.after(0, lambda p=ttd_kepsek_path: self._log(f"TTD Kepsek: {os.path.basename(p)}", "info"))
+        
+        # Change to app directory for resources
+        original_dir = os.getcwd()
+        app_dir = os.path.dirname(os.path.abspath(__file__))
+        os.chdir(app_dir)
+        
+        try:
+            self.root.after(0, lambda: self._log("Memuat data dari Excel...", "info"))
+            
+            def progress_callback(current, total, student_name):
+                if self.stop_requested:
+                    raise InterruptedError("Generate dihentikan oleh user")
+                self.root.after(0, lambda c=current, t=total, n=student_name: 
+                    self._log(f"[{c}/{t}] Generating: {n}", "info"))
+            
+            generated_files = generate_all_kartu_upk(
+                excel_file_path=excel_path,
+                output_folder=output_folder,
+                photo_folder=photo_folder,
+                tahun_ajaran=tahun_ajaran,
+                ttd_kepsek_path=ttd_kepsek_path,
+                progress_callback=progress_callback
+            )
+            
+            self.root.after(0, lambda: self._log(f"{len(generated_files)} file Kartu UPK berhasil dibuat!", "success"))
+        finally:
+            os.chdir(original_dir)
+    
+    def _generate_kartu_siswa(self, output_folder: str):
+        """Generate Kartu Siswa/Pelajar PDFs."""
+        import sys
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from lib.pdf_generators.kartu_siswa_generator import generate_all_kartu_siswa
+        
+        excel_path = self.file_selectors["excel_kartu_siswa"].get_path()
+        self.root.after(0, lambda: self._log(f"File Excel: {os.path.basename(excel_path)}", "info"))
+        
+        # Get optional photo folder
+        photo_folder = None
+        if "foto_folder_siswa" in self.file_selectors:
+            path = self.file_selectors["foto_folder_siswa"].get_path()
+            if path:
+                photo_folder = path
+                self.root.after(0, lambda p=path: self._log(f"Folder Foto: {p}", "info"))
+        
+        # Load tahun ajaran from Excel DataTetap
+        tahun_ajaran = None
+        try:
+            import pandas as pd
+            import warnings
+            warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl")
+            
+            df = pd.read_excel(excel_path, sheet_name="DataTetap")
+            df.columns = df.columns.str.strip()
+            
+            for _, row in df.iterrows():
+                var_name = str(row.iloc[0]).strip()
+                if var_name.lower() == 'tahun':
+                    tahun_ajaran = str(row.iloc[1]).strip() if len(row) > 1 else None
+                    break
+            
+            if tahun_ajaran:
+                self.root.after(0, lambda t=tahun_ajaran: self._log(f"Tahun Ajaran: {t} (dari Excel)", "info"))
+        except Exception as e:
+            self.root.after(0, lambda: self._log(f"Warning: Tidak dapat load Tahun Ajaran dari Excel", "warning"))
+        
+        # Get kepsek signature (from wali_signatures if available)
+        ttd_kepsek_path = self.wali_signatures.get('KEPSEK') or None
+        if ttd_kepsek_path:
+            self.root.after(0, lambda p=ttd_kepsek_path: self._log(f"TTD Kepsek: {os.path.basename(p)}", "info"))
+        
+        # Change to app directory for resources
+        original_dir = os.getcwd()
+        app_dir = os.path.dirname(os.path.abspath(__file__))
+        os.chdir(app_dir)
+        
+        try:
+            self.root.after(0, lambda: self._log("Memuat data dari Excel...", "info"))
+            
+            def progress_callback(current, total, student_name):
+                if self.stop_requested:
+                    raise InterruptedError("Generate dihentikan oleh user")
+                self.root.after(0, lambda c=current, t=total, n=student_name: 
+                    self._log(f"[{c}/{t}] Generating: {n}", "info"))
+            
+            generated_files = generate_all_kartu_siswa(
+                excel_file_path=excel_path,
+                output_folder=output_folder,
+                photo_folder=photo_folder,
+                tahun_ajaran=tahun_ajaran,
+                ttd_kepsek_path=ttd_kepsek_path,
+                progress_callback=progress_callback
+            )
+            
+            self.root.after(0, lambda: self._log(f"{len(generated_files)} file Kartu Pelajar berhasil dibuat!", "success"))
+        finally:
+            os.chdir(original_dir)
     
     def _generate_transkrip(self, output_folder: str):
         """Generate Transkrip Nilai PDFs."""
