@@ -206,7 +206,6 @@ class PDFGenerator:
         table_data = [
             ['Nama', ':', self.nama],
             ['Tempat/Tgl. Lahir', ':', f"{self.tempat}, {self.tanggal_lahir}"],
-            ['NIPD/NISN', ':', str(self.nisn)],
             ['No. Peserta Ujian', ':', str(self.no_peserta)],
             ['Penyelenggara UPK', ':', self.penyelenggara_upk],
             ['Satuan Pendidikan Asal', ':', self.satuan_pendidikan_asal]
@@ -373,10 +372,15 @@ def datetime_dateId(dt):
 
 def tabel_nilai(row):
     header = ["No" ,"Mata Pelajaran", "Nilai" ]
-    kolom_mapel = row.index[1:-1]   # Lewatkan kolom pertama dan terakhir
+    # Exclude NIS/NISN columns - only keep subject columns
+    exclude = {'nis', 'nisn'}
+    cols = [col for col in row.index if col.strip().lower() not in exclude]
+    if not cols:
+        return [header]
+    kolom_mapel = cols[:-1]   # All except last (Rata-rata)
     data = [[i + 1, col, int(row[col])] for i, col in enumerate(kolom_mapel)]
     # Baris terakhir tanpa nomor
-    data.append(["", row.index[-1], int(row[row.index[-1]]) ])
+    data.append(["", cols[-1], int(row[cols[-1]]) ])
     return [header] + data
 
 if __name__ == "__main__":    
@@ -402,6 +406,7 @@ def generate_all_skhupk(excel_file_path, output_folder, ttd_kepsek_path=None, pr
     """
     Wrapper function for GUI compatibility.
     Generate SKHUPK PDFs for all students from Excel file.
+    Matches students between DATA SISWA and NILAI by both Nama and NIS.
     
     Args:
         excel_file_path: Path to Excel file containing SKHUPK data
@@ -417,6 +422,15 @@ def generate_all_skhupk(excel_file_path, output_folder, ttd_kepsek_path=None, pr
     
     generated_files = []
     
+    def normalize_nis(val):
+        """Normalize NIS value to string for comparison."""
+        if pd.isna(val) or str(val).strip() in ('', 'nan', 'None'):
+            return ''
+        try:
+            return str(int(float(val)))
+        except (ValueError, TypeError):
+            return str(val).strip()
+    
     try:
         # Create output folder
         os.makedirs(output_folder, exist_ok=True)
@@ -428,32 +442,87 @@ def generate_all_skhupk(excel_file_path, output_folder, ttd_kepsek_path=None, pr
         data_siswa = df['DATA SISWA']
         total_students = len(data_siswa)
         
-        # Process nilai
-        df['NILAI']["Rata-rata"] = df["NILAI"].iloc[:,1:].mean(axis=1).apply(lambda x: int(round(x,0)))
-        df["NILAI"].iloc[:,1:] = df["NILAI"].iloc[:,1:].round().astype(int)
-        nilai_df = df['NILAI'].set_index('Nama')
+        # Find NIS/NISN column in NILAI sheet
+        nilai_nis_col = None
+        for col in df['NILAI'].columns:
+            if col.strip().lower() in ('nis', 'nisn'):
+                nilai_nis_col = col
+                break
+        
+        # Get subject columns only (exclude Nama and NIS)
+        exclude_set = {'nama'}
+        if nilai_nis_col:
+            exclude_set.add(nilai_nis_col.strip().lower())
+        subject_cols = [col for col in df['NILAI'].columns
+                        if col.strip().lower() not in exclude_set]
+        
+        # Calculate Rata-rata from subject columns only
+        for col in subject_cols:
+            df['NILAI'][col] = pd.to_numeric(df['NILAI'][col], errors='coerce').fillna(0)
+        df['NILAI']["Rata-rata"] = df["NILAI"][subject_cols].mean(axis=1).apply(lambda x: int(round(x, 0)))
+        all_num_cols = subject_cols + ["Rata-rata"]
+        for col in all_num_cols:
+            df['NILAI'][col] = df['NILAI'][col].round().astype(int)
+        
+        # Keep raw DataFrame for matching
+        nilai_raw = df['NILAI'].copy()
         
         # Process data tetap
         df['DATA TETAP']['variabel'] = df['DATA TETAP']['variabel'].str.strip()
         df['DATA TETAP'] = df['DATA TETAP'].fillna("")
         data_tetap = df['DATA TETAP'].set_index('variabel')['nilai'].to_dict()
         
+        # Find NIS column in DATA SISWA
+        siswa_nis_col = None
+        for col in data_siswa.columns:
+            if col.strip().lower() in ('nisn', 'nis'):
+                siswa_nis_col = col
+                break
+        
         # Generate for each student
         count = 0
         for idx, row in data_siswa.iterrows():
             nama = row['Nama']
+            
+            # Get NIS from DATA SISWA
+            nis_str = ''
+            if siswa_nis_col:
+                nis_str = normalize_nis(row[siswa_nis_col])
+            
+            # Match Nilai by Nama AND NIS
+            mask = nilai_raw['Nama'].astype(str).str.strip() == str(nama).strip()
+            if nilai_nis_col and nis_str:
+                mask = mask & (nilai_raw[nilai_nis_col].apply(normalize_nis) == nis_str)
+            
+            matched = nilai_raw[mask]
+            if matched.empty:
+                print(f"No matching nilai for {nama} (NIS: {nis_str}), skipping...")
+                count += 1
+                if progress_callback:
+                    progress_callback(count, total_students, nama)
+                continue
+            
+            # Get matched row, drop non-subject columns
+            drop_cols = ['Nama']
+            if nilai_nis_col:
+                drop_cols.append(nilai_nis_col)
+            nilai_row = matched.iloc[0].drop(drop_cols, errors='ignore')
+            
             student_data = [
                 nama,
                 row['Tempat'].capitalize(),
                 datetime_dateId(row['Tanggal Lahir']),
-                row['NISN'],
+                row.get('NISN', row.get('NIS', '')),
                 row['No peserta Ujian'],
                 row['Nomor SKHUPK']
             ]
-            nilai_data = tabel_nilai(nilai_df.loc[nama])
+            nilai_data = tabel_nilai(nilai_row)
             
             try:
-                pdf_path = os.path.join(output_folder, f"SKHUPK_{nama}.pdf")
+                # Filename: nama - nis.pdf
+                safe_nama = str(nama).strip()
+                pdf_filename = f"{safe_nama} - {nis_str}.pdf" if nis_str else f"{safe_nama}.pdf"
+                pdf_path = os.path.join(output_folder, pdf_filename)
                 generator = PDFGenerator(student_data, nilai_data, data_tetap, ttd_kepsek_path=ttd_kepsek_path)
                 generator.generate_pdf(pdf_path)
                 generated_files.append(pdf_path)

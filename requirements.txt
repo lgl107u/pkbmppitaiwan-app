@@ -2,12 +2,10 @@
 reportlab==4.2.5
 pandas==2.2.3
 numpy==1.26.4
-python-docx==1.1.2
 pillow==11.0.0
 openpyxl==3.1.5
 opencv-python==4.10.0.84
-qrcode[pil]==8.2
 
 # Build dependencies (hanya diperlukan untuk build EXE)
-pyinstaller==6.18.0
-pyinstaller-hooks-contrib==2026.0
+pyinstaller==6.11.0
+pyinstaller-hooks-contrib==2024.10

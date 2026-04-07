@@ -68,11 +68,6 @@ if not exist pkbm_generator_app.py (
     pause
     exit /b 1
 )
-if not exist build_windows.spec (
-    echo [ERROR] File build_windows.spec tidak ditemukan!
-    pause
-    exit /b 1
-)
 if not exist assets (
     echo [WARNING] Folder assets tidak ditemukan
 )
@@ -80,16 +75,29 @@ if not exist lib (
     echo [WARNING] Folder lib tidak ditemukan
 )
 
+REM Pilih spec file yang akan digunakan
+set SPEC_FILE=build_simple.spec
+if not exist build_simple.spec (
+    echo [INFO] build_simple.spec tidak ada, menggunakan build_windows.spec
+    set SPEC_FILE=build_windows.spec
+)
+if not exist %SPEC_FILE% (
+    echo [ERROR] File spec tidak ditemukan!
+    pause
+    exit /b 1
+)
+
 echo.
 echo ========================================
 echo   Memulai Build Executable...
 echo ========================================
 echo.
+echo [INFO] Menggunakan: %SPEC_FILE%
 echo [INFO] Ini mungkin memakan waktu 2-5 menit...
 echo [INFO] Mohon tunggu...
 echo.
 
-pyinstaller --clean build_windows.spec
+pyinstaller --clean %SPEC_FILE%
 
 if errorlevel 1 (
     echo.
