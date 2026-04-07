@@ -427,7 +427,6 @@ class PDFWithHeaderPadding:
             ["Nomor Pokok Sekolah Nasional", ":", "P9908880"],
             ["Nama Lengkap", ":", self.nama],
             ["Tempat, Tanggal Lahir", ":", self.tempat_lahir],
-            ["Nomor Induk Siswa Nasional", ":", self.nisn],
             ["Nomor Ijazah", ":", self.no_ijazah],
             ["Tanggal Kelulusan", ":", self.tanggal_kelulusan],
             ["Peminatan", ":", self.peminatan]
@@ -471,6 +470,7 @@ def generate_all_transcripts(excel_file_path, output_folder, ttd_kepsek_path=Non
     """
     Wrapper function for GUI compatibility.
     Generate Transkrip Nilai PDFs for all students from Excel file.
+    Matches students between Data Siswa and Nilai by both nama and NIS.
     
     Args:
         excel_file_path: Path to Excel file containing transcript data
@@ -486,33 +486,136 @@ def generate_all_transcripts(excel_file_path, output_folder, ttd_kepsek_path=Non
     
     generated_files = []
     
+    def normalize_nis(val):
+        """Normalize NIS value to string for comparison."""
+        val_str = str(val).strip()
+        if val_str in ('', 'nan', 'None', '0'):
+            return ''
+        try:
+            return str(int(float(val_str)))
+        except (ValueError, TypeError):
+            return val_str
+    
     try:
         # Create output folder
         os.makedirs(output_folder, exist_ok=True)
         
-        # Load and generate
-        generator = PDFTranscriptGenerator(excel_file_path)
+        # Load raw data
+        raw_data = pd.read_excel(excel_file_path, sheet_name=["Nilai", "Data Siswa", "Data Tetap"])
         
-        # Get student count for progress
-        total_students = len(generator.data_siswa)
+        nilai_df = raw_data['Nilai'].copy()
+        data_siswa = raw_data['Data Siswa'].copy()
+        data_tetap_df = raw_data['Data Tetap'].copy()
         
-        # Generate for each student
-        count = 0
-        for idx, row in generator.data_siswa.iterrows():
-            nama = row['nama']
+        # Clean column names
+        data_siswa.columns = data_siswa.columns.str.strip().str.lower()
+        nilai_df.columns = nilai_df.columns.str.strip().str.lower()
+        data_tetap_df.columns = data_tetap_df.columns.str.strip().str.lower()
+        
+        # Fill NaN
+        data_siswa = data_siswa.fillna("")
+        nilai_df = nilai_df.fillna(0)
+        data_tetap_df = data_tetap_df.fillna("")
+        
+        # Find NIS/NISN column in Nilai
+        nilai_nis_col = None
+        for col in nilai_df.columns:
+            if col.strip().lower() in ('nis', 'nisn'):
+                nilai_nis_col = col
+                break
+        
+        # Get subject columns only (exclude nama and nis)
+        exclude_set = {'nama'}
+        if nilai_nis_col:
+            exclude_set.add(nilai_nis_col)
+        subject_cols = [col for col in nilai_df.columns if col not in exclude_set]
+        
+        # Round and format subject values
+        for col in subject_cols:
+            nilai_df[col] = pd.to_numeric(nilai_df[col], errors='coerce').fillna(0).round(2)
+        
+        # Format as string with 2 decimals
+        nilai_formatted = nilai_df.copy()
+        for col in subject_cols:
+            nilai_formatted[col] = nilai_formatted[col].apply(lambda x: f"{float(x):.2f}")
+        
+        # Process student data
+        def _datetime_dateId(dt):
+            bln_id = ["Januari", "Februari", "Maret", "April", "Mei", "Juni",
+                      "Juli", "Agustus", "September", "Oktober", "November", "Desember"]
             try:
-                pdf_path = os.path.join(output_folder, f"Transkrip_{nama}.pdf")
-                # Generate single PDF
+                return f"{dt.day} {bln_id[dt.month - 1]} {dt.year}"
+            except:
+                return str(dt)
+        
+        data_siswa['tanggal lahir'] = data_siswa['tanggal lahir'].apply(_datetime_dateId)
+        data_siswa['tempat'] = data_siswa['tempat'].apply(lambda x: str(x).capitalize())
+        data_siswa = data_siswa.astype(str)
+        
+        # Process data_tetap
+        processed_data_tetap = data_tetap_df.set_index("variabel")["nilai"].to_dict()
+        
+        # Find NIS column in Data Siswa
+        siswa_nis_col = None
+        for col in data_siswa.columns:
+            if col.strip().lower() in ('nisn', 'nis'):
+                siswa_nis_col = col
+                break
+        
+        total_students = len(data_siswa)
+        
+        # Build grade table excluding NIS columns
+        def buat_tabel(row_series):
+            data = [["No", "Mata Pelajaran", "Nilai"]]
+            cols = [col for col in row_series.index if col.strip().lower() not in ('nis', 'nisn')]
+            data += [[i + 1, col.title(), row_series[col]] for i, col in enumerate(cols)]
+            return data
+        
+        count = 0
+        for idx, row in data_siswa.iterrows():
+            nama = row['nama']
+            
+            # Get NIS from Data Siswa
+            nis_str = ''
+            if siswa_nis_col:
+                nis_str = normalize_nis(row[siswa_nis_col])
+            
+            # Match Nilai by nama AND NIS
+            mask = nilai_formatted['nama'].astype(str).str.strip() == str(nama).strip()
+            if nilai_nis_col and nis_str:
+                mask = mask & (nilai_formatted[nilai_nis_col].apply(normalize_nis) == nis_str)
+            
+            matched = nilai_formatted[mask]
+            if matched.empty:
+                print(f"No matching nilai for {nama} (NIS: {nis_str}), skipping...")
+                count += 1
+                if progress_callback:
+                    progress_callback(count, total_students, nama)
+                continue
+            
+            # Get matched row, drop non-subject columns
+            drop_cols = ['nama']
+            if nilai_nis_col:
+                drop_cols.append(nilai_nis_col)
+            nilai_row = matched.iloc[0].drop(drop_cols, errors='ignore')
+            
+            try:
+                safe_nama = str(nama).strip()
+                pdf_filename = f"{safe_nama} - {nis_str}.pdf" if nis_str else f"{safe_nama}.pdf"
+                pdf_path = os.path.join(output_folder, pdf_filename)
+                
                 PDFWithHeaderPadding(
                     student_data=row,
-                    nilai_data=generator._buat_tabel(generator.nilai_data.loc[nama]),
-                    data_tetap=generator.processed_data_tetap,
+                    nilai_data=buat_tabel(nilai_row),
+                    data_tetap=processed_data_tetap,
                     output_path=pdf_path,
                     ttd_kepsek_path=ttd_kepsek_path
                 )
                 generated_files.append(pdf_path)
             except Exception as e:
                 print(f"Error generating Transkrip for {nama}: {e}")
+                import traceback
+                traceback.print_exc()
             
             count += 1
             if progress_callback:
