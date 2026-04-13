@@ -4,7 +4,7 @@ pandas==2.2.3
 numpy==1.26.4
 pillow==11.0.0
 openpyxl==3.1.5
-opencv-python==4.10.0.84
+opencv-python==4.11.0.86
 
 # Build dependencies (hanya diperlukan untuk build EXE)
 pyinstaller==6.11.0
