@@ -1,46 +1,63 @@
 # -*- mode: python ; coding: utf-8 -*-
 
 """
-PyInstaller spec file untuk PKBM Generator - macOS
-Mode: --onedir (folder bundle)
+Simplified PyInstaller spec file untuk PKBM Generator - macOS
+Minimal dependencies, excludes problematic modules
 """
 
 import os
 import sys
-from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 block_cipher = None
 project_path = os.path.abspath(SPECPATH)
 
 # ============================================================
-# DATA FILES - semua folder yang harus ter-bundle
+# DATA FILES
 # ============================================================
 datas = [
-    ('assets', 'assets'),      # Logo, fonts, signatures
-    ('lib', 'lib'),            # Generator modules
-    ('data', 'data'),          # Template Excel files
+    ('assets', 'assets'),
+    ('lib', 'lib'),
+    ('data', 'data'),
 ]
 
 # ============================================================
-# HIDDEN IMPORTS
+# MINIMAL HIDDEN IMPORTS
 # ============================================================
 hiddenimports = [
-    'tkinter', 'tkinter.ttk', 'tkinter.filedialog', 'tkinter.messagebox',
-    'PIL', 'PIL.Image', 'PIL.ImageTk', 'PIL._tkinter_finder',
-    'reportlab', 'reportlab.pdfgen', 'reportlab.pdfgen.canvas',
-    'reportlab.lib', 'reportlab.lib.pagesizes', 'reportlab.lib.units',
-    'reportlab.lib.colors', 'reportlab.lib.styles', 'reportlab.lib.enums',
-    'reportlab.platypus', 'reportlab.platypus.tables', 'reportlab.platypus.paragraph',
-    'reportlab.pdfbase', 'reportlab.pdfbase.ttfonts', 'reportlab.pdfbase.pdfmetrics',
-    'pandas', 'numpy', 'openpyxl', 'openpyxl.cell', 'openpyxl.styles',
-    'cv2', 'threading', 'shutil', 'datetime', 'pathlib',
+    'tkinter',
+    'tkinter.ttk',
+    'tkinter.filedialog',
+    'tkinter.messagebox',
+    'PIL._tkinter_finder',
 ]
 
-hiddenimports += collect_submodules('reportlab')
-hiddenimports += collect_submodules('openpyxl')
-hiddenimports += collect_submodules('PIL')
-
-datas += collect_data_files('reportlab')
+# ============================================================
+# COMPREHENSIVE EXCLUDES
+# ============================================================
+excludes = [
+    # Development tools
+    'IPython', 'jupyter', 'notebook', 'nbformat', 'nbconvert', 'ipykernel',
+    'jedi', 'parso', 'pygments', 'wcwidth', 'prompt_toolkit',
+    
+    # Testing frameworks
+    'pytest', 'unittest', 'test', 'tests', '_pytest',
+    
+    # Build tools (causes distutils conflict)
+    'setuptools', 'distutils', '_distutils_hack', 'pkg_resources',
+    
+    # Scientific computing (not needed)
+    'matplotlib', 'scipy', 'numba', 'llvmlite',
+    
+    # Unused packages
+    'qrcode', 'docx', 'python-docx',
+    
+    # Networking/web (not needed)
+    'requests', 'urllib3', 'certifi', 'charset_normalizer',
+    'zmq', 'tornado', 'asyncio',
+    
+    # Other heavy packages
+    'lxml.html', 'jsonschema', 'referencing',
+]
 
 # ============================================================
 # ANALYSIS
@@ -54,15 +71,7 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[
-        'matplotlib', 'scipy', 'pytest',
-        'setuptools', 'distutils', '_distutils_hack',
-        'test', 'tests', 'unittest',
-        'IPython', 'jupyter', 'notebook', 'nbformat', 'nbconvert',
-        'jedi', 'parso', 'pygments', 'wcwidth',
-        'numba', 'llvmlite',
-        'qrcode', 'docx', 'python-docx',
-    ],
+    excludes=excludes,
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,
@@ -72,7 +81,7 @@ a = Analysis(
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
 # ============================================================
-# ONE-FOLDER BUNDLE (--onedir mode) for macOS
+# ONE-FOLDER BUNDLE
 # ============================================================
 exe = EXE(
     pyz,
@@ -90,7 +99,6 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon='assets/logo.png' if os.path.exists('assets/logo.png') else None,
 )
 
 coll = COLLECT(
@@ -105,12 +113,12 @@ coll = COLLECT(
 )
 
 # ============================================================
-# macOS APP BUNDLE (optional - creates .app bundle)
+# macOS APP BUNDLE
 # ============================================================
 app = BUNDLE(
     coll,
     name='PKBM_Generator.app',
-    icon='assets/logo.png' if os.path.exists('assets/logo.png') else None,
+    icon='assets/logo.icns' if os.path.exists('assets/logo.icns') else None,
     bundle_identifier='com.pkbm.generator',
     info_plist={
         'NSPrincipalClass': 'NSApplication',
@@ -119,5 +127,7 @@ app = BUNDLE(
         'CFBundleDisplayName': 'PKBM Generator',
         'CFBundleVersion': '1.2.0',
         'CFBundleShortVersionString': '1.2.0',
+        'LSMinimumSystemVersion': '10.13.0',
+        'NSRequiresAquaSystemAppearance': 'False',
     },
 )
