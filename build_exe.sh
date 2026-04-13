@@ -73,16 +73,29 @@ fi
 # Detect OS and select appropriate spec file
 OS_TYPE=$(uname -s)
 if [[ "$OS_TYPE" == "Darwin" ]]; then
-    SPEC_FILE="build_macos.spec"
-    echo "[INFO] Detected macOS - using build_macos.spec"
+    # Try simple spec first, fallback to regular
+    if [ -f "build_macos_simple.spec" ]; then
+        SPEC_FILE="build_macos_simple.spec"
+        echo "[INFO] Detected macOS - using build_macos_simple.spec (recommended)"
+    elif [ -f "build_macos.spec" ]; then
+        SPEC_FILE="build_macos.spec"
+        echo "[INFO] Detected macOS - using build_macos.spec"
+    else
+        echo "[ERROR] No macOS spec file found!"
+        exit 1
+    fi
 else
-    SPEC_FILE="build_windows.spec"
-    echo "[INFO] Detected Linux/Other - using build_windows.spec"
-fi
-
-if [ ! -f "$SPEC_FILE" ]; then
-    echo "[ERROR] File $SPEC_FILE tidak ditemukan!"
-    exit 1
+    # Linux or other Unix-like OS
+    if [ -f "build_simple.spec" ]; then
+        SPEC_FILE="build_simple.spec"
+        echo "[INFO] Detected Linux/Other - using build_simple.spec (recommended)"
+    elif [ -f "build_windows.spec" ]; then
+        SPEC_FILE="build_windows.spec"
+        echo "[INFO] Detected Linux/Other - using build_windows.spec"
+    else
+        echo "[ERROR] No spec file found!"
+        exit 1
+    fi
 fi
 
 if [ ! -d assets ]; then
